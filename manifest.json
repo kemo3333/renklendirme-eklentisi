@@ -1,7 +1,7 @@
 {
-  "url": "https://kemo3333.github.io/renklendirme-eklentisi/",
+  "url": "https://kemo3333.github.io/renklendirme-eklentisi/extension.html",
   "title": "Excel'den Renklendirme",
-  "description": "Excel dosyasindaki GUID/ozellik ve renk sutunlarina gore model elemanlarini otomatik boyar.",
+  "description": "Excel dosyasındaki GUID/özellik ve renk sütunlarına göre model elemanlarını otomatik boyar.",
   "icon": "",
   "infoUrl": ""
 }
