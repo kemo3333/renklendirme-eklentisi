@@ -439,6 +439,22 @@
             props.forEach(p => {
               let foundVal = null;
               (p.properties || []).forEach(ps => {
+
+    if (ps.name === "Tekla Assembly") {
+
+        (ps.properties || []).forEach(prop => {
+
+            if (prop.name === "Assembly/Cast unit Mark") {
+
+                foundVal = prop.value;
+
+            }
+
+        });
+
+    }
+
+});
                 (ps.properties || []).forEach(prop => {
                   if (foundVal === null && prop.name && prop.name.toLowerCase() === propKey.toLowerCase()){
                     foundVal = prop.value;
