@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Excel'den Renklendirme</title>
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --tc-blue:#0d6efd;
+    --tc-blue-dark:#0b5ed7;
+    --bg:#f7f8fa;
+    --border:#dde1e6;
+    --text:#1b1f24;
+    --muted:#6b7280;
+    --ok:#1a7f37;
+    --err:#c62828;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    font-size:13px;
+  }
+  .wrap{padding:14px;max-width:560px;margin:0 auto;}
+  h1{font-size:15px;margin:0 0 4px;}
+  p.sub{color:var(--muted);margin:0 0 14px;font-size:12px;}
+  .card{
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:14px;
+    margin-bottom:12px;
+  }
+  .card h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin:0 0 10px;}
+  label{display:block;font-size:12.5px;margin-bottom:4px;font-weight:600;}
+  select, input[type=text]{
+    width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;
+    font-size:13px;margin-bottom:10px;background:#fff;
+  }
+  .row{display:flex;gap:10px;}
+  .row > div{flex:1;}
+  .dropzone{
+    border:2px dashed var(--border);
+    border-radius:8px;
+    padding:18px;
+    text-align:center;
+    color:var(--muted);
+    cursor:pointer;
+    transition:.15s;
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--tc-blue);color:var(--tc-blue);background:#f0f6ff;}
+  .dropzone input{display:none;}
+  .filename{font-size:12px;color:var(--tc-blue);margin-top:8px;word-break:break-all;}
+  .btn{
+    display:inline-block;width:100%;padding:9px 12px;border:none;border-radius:6px;
+    background:var(--tc-blue);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;
+    text-align:center;
+  }
+  .btn:hover{background:var(--tc-blue-dark);}
+  .btn:disabled{background:#a9b4c0;cursor:not-allowed;}
+  .btn.secondary{background:#fff;color:var(--text);border:1px solid var(--border);}
+  .btn.secondary:hover{background:#f2f3f5;}
+  .btn-row{display:flex;gap:8px;}
+  .btn-row .btn{width:auto;flex:1;}
+  .status{
+    display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:#c9ced6;}
+  .dot.on{background:var(--ok);}
+  .dot.err{background:var(--err);}
+  .progress-outer{
+    height:8px;background:#e9ecef;border-radius:4px;overflow:hidden;margin:10px 0 6px;
+  }
+  .progress-inner{height:100%;width:0%;background:var(--tc-blue);transition:width .2s;}
+  .log{
+    background:#0f172a;color:#d1d5db;font-family:Consolas,monospace;font-size:11.5px;
+    border-radius:6px;padding:8px 10px;max-height:160px;overflow-y:auto;line-height:1.5;
+  }
+  .log .ok{color:#4ade80;}
+  .log .err{color:#f87171;}
+  .log .warn{color:#facc15;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:-4px;margin-bottom:10px;}
+  .badge{
+    display:inline-block;font-size:11px;background:#eef2ff;color:#3730a3;border-radius:10px;
+    padding:2px 8px;margin-left:6px;
+  }
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Excel'den Otomatik Renklendirme</h1>
+  <p class="sub">Excel dosyanızdaki eşleştirme sütununa göre modeldeki elemanları otomatik olarak boyar.</p>
+
+  <div class="card">
+    <h2>1. Bağlantı</h2>
+    <div class="status"><span id="connDot" class="dot"></span><span id="connText">Trimble Connect'e bağlanılıyor…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Excel Dosyası</h2>
+    <div id="dropzone" class="dropzone">
+      <div>📄 Excel dosyasını buraya sürükleyin veya seçmek için tıklayın</div>
+      <div class="filename" id="fileName"></div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+    </div>
+  </div>
+
+  <div class="card hidden" id="mappingCard">
+    <h2>3. Eşleştirme Ayarları</h2>
+
+    <label>Eşleştirme yöntemi</label>
+    <select id="matchMode">
+      <option value="property">Özellik (Property) adı ile eşleştir (önerilen)</option>
+      <option value="guid">IFC GUID</option>
+    </select>
+
+    <div id="propNameWrap">
+      <label>Özellik adı (modeldeki orijinal ad, örn: Mark, Reference, Name)</label>
+      <input type="text" id="propName" placeholder="Örn: Mark" value="Assembly/Cast unit Mark" />
+      <div class="hint">Tüm özellik setleri içinde bu isimde bir alan aranır ve değeri Excel'deki kimlik sütunu ile karşılaştırılır.</div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Kimlik sütunu (Excel)</label>
+        <select id="idColumn"></select>
+      </div>
+      <div>
+        <label>Renk sütunu (Excel)</label>
+        <select id="colorColumn"></select>
+      </div>
+    </div>
+    <div>
+      <label>Adet sütunu (Excel, opsiyonel)</label>
+      <select id="qtyColumn"><option value="">(Kullanma)</option></select>
+      <div class="hint">Seçersen, her kimlik için Excel'deki adet ile modelde boyanan gerçek adet karşılaştırılır ve uyuşmazlıklar Kayıtlar'da listelenir.</div>
+    </div>
+    <div class="hint">Renk sütununa hex kod (#FF0000), İngilizce renk adı (red, blue…) ya da temel Türkçe renk adı (kırmızı, mavi, yeşil…) yazabilirsiniz.</div>
+
+    <div class="btn-row">
+      <button class="btn" id="applyBtn">Uygula ve Boya</button>
+      <button class="btn secondary" id="resetBtn">Renkleri Sıfırla</button>
+    </div>
+
+    <div class="progress-outer hidden" id="progressOuter">
+      <div class="progress-inner" id="progressInner"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Kayıtlar</h2>
+    <div class="log" id="log">Hazır.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- DOM ----------
+  const connDot = document.getElementById('connDot');
+  const connText = document.getElementById('connText');
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const fileName = document.getElementById('fileName');
+  const mappingCard = document.getElementById('mappingCard');
+  const idColumn = document.getElementById('idColumn');
+  const colorColumn = document.getElementById('colorColumn');
+  const qtyColumn = document.getElementById('qtyColumn');
+  const matchMode = document.getElementById('matchMode');
+  const propNameWrap = document.getElementById('propNameWrap');
+  const propName = document.getElementById('propName');
+  const applyBtn = document.getElementById('applyBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const progressOuter = document.getElementById('progressOuter');
+  const progressInner = document.getElementById('progressInner');
+  const logEl = document.getElementById('log');
+
+  let API = null;
+  let excelRows = [];      // array of objects, keyed by header name
+  let excelHeaders = [];
+
+  function log(msg, kind){
+    const line = document.createElement('div');
+    if (kind) line.className = kind;
+    const time = new Date().toLocaleTimeString('tr-TR');
+    line.textContent = `[${time}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setProgress(pct){
+    progressOuter.classList.remove('hidden');
+    progressInner.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
+
+  function hideProgress(){
+    setTimeout(()=>progressOuter.classList.add('hidden'), 600);
+  }
+
+  matchMode.addEventListener('change', () => {
+    propNameWrap.classList.toggle('hidden', matchMode.value !== 'property');
+  });
+
+  // ---------- Connect to Trimble Connect ----------
+  async function connect(){
+    try{
+      API = await TrimbleConnectWorkspace.connect(window.parent, (event, data) => {
+        // Optional: react to events (model changes etc.)
+      }, 30000);
+      connDot.classList.add('on');
+      connText.textContent = 'Trimble Connect 3D Viewer\'a bağlandı';
+      log('Bağlantı kuruldu.', 'ok');
+    }catch(e){
+      connDot.classList.add('err');
+      connText.textContent = 'Bağlantı kurulamadı. Bu sayfa Trimble Connect içinde bir eklenti (extension) olarak açılmalı.';
+      log('Bağlantı hatası: ' + e.message, 'err');
+    }
+  }
+  connect();
+
+  // ---------- Excel loading ----------
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file){
+    fileName.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
+        if (!json.length){
+          log('Excel dosyası boş görünüyor.', 'err');
+          return;
+        }
+        excelRows = json;
+        excelHeaders = Object.keys(json[0]);
+        populateColumnSelects();
+        mappingCard.classList.remove('hidden');
+        log(`Excel yüklendi: ${json.length} satır, sütunlar: ${excelHeaders.join(', ')}`, 'ok');
+      }catch(err){
+        log('Excel okunamadı: ' + err.message, 'err');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function populateColumnSelects(){
+    idColumn.innerHTML = '';
+    colorColumn.innerHTML = '';
+    qtyColumn.innerHTML = '<option value="">(Kullanma)</option>';
+    excelHeaders.forEach(h => {
+      const o1 = document.createElement('option'); o1.value = h; o1.textContent = h;
+      idColumn.appendChild(o1);
+      const o2 = document.createElement('option'); o2.value = h; o2.textContent = h;
+      colorColumn.appendChild(o2);
+      const o3 = document.createElement('option'); o3.value = h; o3.textContent = h;
+      qtyColumn.appendChild(o3);
+    });
+    // sensible defaults
+    const guidGuess = excelHeaders.find(h => /guid|globalid|id/i.test(h));
+    const colorGuess = excelHeaders.find(h => /renk|color|colour/i.test(h));
+    const qtyGuess = excelHeaders.find(h => /adet|miktar|qty|quantity|count/i.test(h));
+    if (guidGuess) idColumn.value = guidGuess;
+    if (colorGuess) colorColumn.value = colorGuess;
+    if (qtyGuess) qtyColumn.value = qtyGuess;
+  }
+
+  // ---------- Color parsing ----------
+  const TR_COLORS = {
+    'kırmızı':'#FF0000','kirmizi':'#FF0000','mavi':'#0000FF','yeşil':'#00A651','yesil':'#00A651',
+    'sarı':'#FFD400','sari':'#FFD400','turuncu':'#FF7F00','mor':'#800080','pembe':'#FF69B4',
+    'siyah':'#000000','beyaz':'#FFFFFF','gri':'#808080','kahverengi':'#8B4513','lacivert':'#000080',
+    'turkuaz':'#40E0D0','bordo':'#800000','altın':'#FFD700','altin':'#FFD700','gümüş':'#C0C0C0','gumus':'#C0C0C0'
+  };
+  const colorCanvas = document.createElement('canvas').getContext('2d');
+  function toHexColor(raw){
+    if (raw === null || raw === undefined) return null;
+    let v = String(raw).trim();
+    if (!v) return null;
+    if (v[0] === '#'){
+      return normalizeHex(v);
+    }
+    const trKey = v.toLowerCase();
+    if (TR_COLORS[trKey]) return TR_COLORS[trKey];
+    // let the browser resolve any valid CSS color name / rgb() / hsl()
+    colorCanvas.fillStyle = '#000000';
+    colorCanvas.fillStyle = v;
+    const resolved = colorCanvas.fillStyle;
+    if (resolved && resolved !== '#000000') return normalizeHex(resolved);
+    if (resolved === '#000000' && /black|^#000/i.test(v)) return '#000000';
+    return null;
+  }
+  function normalizeHex(v){
+    if (v.startsWith('#')){
+      if (v.length === 4){ // #abc -> #aabbcc
+        v = '#' + v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+      }
+      return v.toUpperCase();
+    }
+    return v;
+  }
+
+  // ---------- Utility: chunk array ----------
+  function chunk(arr, size){
+    const out = [];
+    for (let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size));
+    return out;
+  }
+
+  // ---------- Main apply logic ----------
+  applyBtn.addEventListener('click', runApply);
+  resetBtn.addEventListener('click', runReset);
+
+  async function runReset(){
+    if (!API) { log('Önce Trimble Connect bağlantısının kurulmasını bekleyin.', 'err'); return; }
+    resetBtn.disabled = true; applyBtn.disabled = true;
+    try{
+      log('Tüm renkler sıfırlanıyor…');
+      await API.viewer.setObjectState(undefined, { color: 'reset' });
+      log('Renkler sıfırlandı.', 'ok');
+    }catch(e){
+      log('Sıfırlama hatası: ' + e.message, 'err');
+    }finally{
+      resetBtn.disabled = false; applyBtn.disabled = false;
+    }
+  }
+
+  async function runApply(){
+    if (!API){ log('Trimble Connect bağlantısı yok.', 'err'); return; }
+    if (!excelRows.length){ log('Önce bir Excel dosyası yükleyin.', 'err'); return; }
+
+    const idCol = idColumn.value;
+    const colCol = colorColumn.value;
+    const qtyCol = qtyColumn.value; // '' if not used
+    const mode = matchMode.value;
+    const propKey = propName.value.trim();
+
+    if (mode === 'property' && !propKey){
+      log('Özellik adı boş olamaz.', 'err');
+      return;
+    }
+
+    applyBtn.disabled = true; resetBtn.disabled = true;
+    setProgress(2);
+
+    try{
+      // 1) Build the excel lookup table: normalized identifier -> { hex, qty }
+      const excelMap = new Map();
+      let skippedColor = 0;
+      excelRows.forEach(row => {
+        const idVal = row[idCol];
+        const colorVal = row[colCol];
+        if (idVal === undefined || idVal === '' || idVal === null) return;
+        const hex = toHexColor(colorVal);
+        if (!hex){ skippedColor++; return; }
+        let qty = null;
+        if (qtyCol){
+          const qnum = parseInt(String(row[qtyCol]).trim(), 10);
+          if (!isNaN(qnum)) qty = qnum;
+        }
+        excelMap.set(String(idVal).trim().toLowerCase(), { hex, qty });
+      });
+      log(`Excel'den ${excelMap.size} geçerli eşleştirme okundu.` + (skippedColor ? ` (${skippedColor} satırın rengi tanınamadı)` : ''));
+      if (!excelMap.size){
+        log('Kullanılabilir eşleştirme bulunamadı, işlem durduruldu.', 'err');
+        return;
+      }
+      const actualCounts = new Map(); // normalized id -> matched instance count
+
+      // 2) Get all objects currently loaded in the viewer, grouped by model
+      log('Modeldeki nesneler alınıyor…');
+      const modelObjectsList = await API.viewer.getObjects();
+      if (!modelObjectsList || !modelObjectsList.length){
+        log('Görüntüleyicide yüklü model bulunamadı.', 'err');
+        return;
+      }
+      setProgress(10);
+
+      let totalMatched = 0;
+      let totalChecked = 0;
+      const totalModels = modelObjectsList.length;
+
+      for (let mi = 0; mi < totalModels; mi++){
+        const modelId = modelObjectsList[mi].modelId;
+        const objects = modelObjectsList[mi].objects || [];
+        const runtimeIds = objects.map(o => o.id);
+        totalChecked += runtimeIds.length;
+        if (!runtimeIds.length) continue;
+
+        log(`Model ${mi+1}/${totalModels}: ${runtimeIds.length} nesne kontrol ediliyor…`);
+
+        // colorGroups: hex -> array of runtimeIds to color, for this model
+        const colorGroups = new Map();
+
+        if (mode === 'guid'){
+          const idChunks = chunk(runtimeIds, 500);
+          for (let c = 0; c < idChunks.length; c++){
+            const idsChunk = idChunks[c];
+            let guids = null;
+            try{
+              guids = await API.viewer.convertToObjectIds(modelId, idsChunk);
+            }catch(err){
+              // Some objects in this chunk have no external GUID (e.g. non-BIM entities).
+              // Fall back to resolving this chunk one by one so we don't lose the whole batch.
+              guids = [];
+              for (const rid of idsChunk){
+                try{
+                  const single = await API.viewer.convertToObjectIds(modelId, [rid]);
+                  guids.push(single[0]);
+                }catch(e2){
+                  guids.push(null);
+                }
+              }
+            }
+            for (let k = 0; k < idsChunk.length; k++){
+              const g = guids[k];
+              if (!g) continue;
+              const key = String(g).trim().toLowerCase();
+              const entry = excelMap.get(key);
+              if (entry){
+                totalMatched++;
+                actualCounts.set(key, (actualCounts.get(key) || 0) + 1);
+                if (!colorGroups.has(entry.hex)) colorGroups.set(entry.hex, []);
+                colorGroups.get(entry.hex).push(idsChunk[k]);
+              }
+            }
+            setProgress(10 + ((mi + (c+1)/idChunks.length) / totalModels) * 70);
+          }
+        } else {
+          // property mode: fetch full properties per chunk and search for propKey
+          const idChunks = chunk(runtimeIds, 200);
+          for (let c = 0; c < idChunks.length; c++){
+            const idsChunk = idChunks[c];
+            let props = [];
+            try{
+              props = await API.viewer.getObjectProperties(modelId, idsChunk);
+            }catch(err){
+              log('Özellikler alınamadı (bir grup atlandı): ' + err.message, 'warn');
+              continue;
+            }
+            const wantedKey = propKey.trim().toLowerCase();
+            props.forEach(p => {
+              let foundVal = null;
+              (p.properties || []).forEach(ps => {
+                (ps.properties || []).forEach(prop => {
+                  if (foundVal !== null) return;
+                  const pname = prop && prop.name ? String(prop.name).trim().toLowerCase() : '';
+                  if (pname === wantedKey){
+                    // value can be a plain primitive, or an object like {value, units} depending on the property type
+                    let v = prop.value;
+                    if (v && typeof v === 'object'){
+                      v = ('value' in v) ? v.value : (('displayValue' in v) ? v.displayValue : null);
+                    }
+                    if (v !== null && v !== undefined && String(v).trim() !== ''){
+                      foundVal = v;
+                    }
+                  }
+                });
+              });
+              if (foundVal !== null){
+                const key = String(foundVal).trim().toLowerCase();
+                const entry = excelMap.get(key);
+                if (entry){
+                  totalMatched++;
+                  actualCounts.set(key, (actualCounts.get(key) || 0) + 1);
+                  const hex = entry.hex;
+                  if (!colorGroups.has(hex)) colorGroups.set(hex, []);
+                  colorGroups.get(hex).push(p.id);
+                }
+              }
+            });
+            setProgress(10 + ((mi + (c+1)/idChunks.length) / totalModels) * 70);
+          }
+        }
+
+        // 3) Apply colors, grouped by color, chunked to keep calls light
+        const hexList = Array.from(colorGroups.keys());
+        for (let h = 0; h < hexList.length; h++){
+          const hex = hexList[h];
+          const ids = colorGroups.get(hex);
+          const idChunksForColor = chunk(ids, 500);
+          for (const idsChunk of idChunksForColor){
+            await API.viewer.setObjectState(
+              { modelObjectIds: [{ modelId, objectRuntimeIds: idsChunk }] },
+              { color: hex }
+            );
+          }
+          log(`Model ${mi+1}: ${ids.length} nesne ${hex} renginde boyandı.`, 'ok');
+        }
+      }
+
+      setProgress(100);
+      log(`Tamamlandı. Kontrol edilen: ${totalChecked}, eşleşen ve boyanan: ${totalMatched}.`, 'ok');
+      if (totalMatched < excelMap.size){
+        log(`Not: Excel'deki ${excelMap.size - totalMatched} kayıt modelde bulunamadı (yanlış kimlik veya model yüklü değil olabilir).`, 'warn');
+      }
+
+      // Adet (quantity) karşılaştırma raporu
+      if (qtyCol){
+        let mismatchCount = 0;
+        const MAX_LOGGED = 30;
+        excelMap.forEach((entry, key) => {
+          if (entry.qty === null) return; // bu satırda adet belirtilmemiş
+          const actual = actualCounts.get(key) || 0;
+          if (actual !== entry.qty){
+            mismatchCount++;
+            if (mismatchCount <= MAX_LOGGED){
+              log(`Adet uyuşmazlığı: "${key}" için Excel'de ${entry.qty} bekleniyordu, modelde ${actual} boyandı.`, 'warn');
+            }
+          }
+        });
+        if (mismatchCount > MAX_LOGGED){
+          log(`… ve ${mismatchCount - MAX_LOGGED} adet uyuşmazlığı daha var.`, 'warn');
+        }
+        if (mismatchCount === 0){
+          log('Adet kontrolü: tüm kayıtların adedi model ile uyuşuyor.', 'ok');
+        } else {
+          log(`Adet kontrolü: ${mismatchCount} kayıtta beklenen/gerçek adet uyuşmadı.`, 'warn');
+        }
+      }
+    }catch(e){
+      log('Beklenmeyen hata: ' + e.message, 'err');
+    }finally{
+      applyBtn.disabled = false; resetBtn.disabled = false;
+      hideProgress();
+    }
+  }
+
+})();
+</script>
+</body>
+</html>
